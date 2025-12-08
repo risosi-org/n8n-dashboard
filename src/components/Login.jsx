@@ -2,8 +2,8 @@ import { useState } from "react";
 import { toast } from "react-hot-toast";
 
 function Login({ onLogin }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("password");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event) => {
@@ -58,6 +58,7 @@ function Login({ onLogin }) {
               id="password"
               type="password"
               value={password}
+              
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 bg-dark-3 border border-border rounded-xl text-text placeholder-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
               placeholder="••••••••"

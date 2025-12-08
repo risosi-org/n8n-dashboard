@@ -15,36 +15,18 @@ function App() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [accessToken, setAccessToken] = useState(null);
+  const [accessToken, setAccessToken] = useState(
+    () => localStorage.getItem("accessToken") || null
+  );
   const [authUser, setAuthUser] = useState(() => {
     const savedUser = localStorage.getItem("authUser");
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  const refreshToken = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/auth/refresh`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json();
-      setAccessToken(data.accessToken);
-      return data.accessToken;
-    } catch (error) {
-      console.error("Error refreshing token:", error);
-      return null;
-    }
-  };
-
   const fetchWithAuth = async (
     url,
     options = {},
-    allowRetry = true,
+    _allowRetry = true,
     tokenOverride = null
   ) => {
     const activeToken = tokenOverride || accessToken;
@@ -59,15 +41,10 @@ function App() {
       headers,
     });
 
-    if (response.status === 401 && allowRetry) {
-      const refreshedToken = await refreshToken();
-      if (refreshedToken) {
-        return fetchWithAuth(url, options, false, refreshedToken);
-      }
+    console.log({response})
 
-      setAuthUser(null);
-      setAccessToken(null);
-      localStorage.removeItem("authUser");
+    if (response.status === 401) {
+ 
       throw new Error("Unauthorized");
     }
 
@@ -91,7 +68,7 @@ function App() {
       setConversations(data);
     } catch (error) {
       console.error("Error loading conversations:", error);
-
+      toast.error("Failed to load conversations. Please login again.");
     } finally {
       if (showSpinner) {
         setLoading(false);
@@ -103,15 +80,17 @@ function App() {
   useEffect(() => {
     const bootstrapAuth = async () => {
       setLoading(true);
-      const hasSession = await refreshToken();
 
-      if (hasSession && !authUser) {
-        const savedUser = localStorage.getItem("authUser");
-        const parsedUser = savedUser ? JSON.parse(savedUser) : null;
-        setAuthUser(parsedUser || { username: "User" });
+      const storedUser = localStorage.getItem("authUser");
+      const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+      const storedToken = localStorage.getItem("accessToken");
+
+      if (parsedUser) {
+        setAuthUser(parsedUser);
       }
 
-      if (hasSession || authUser) {
+      if (storedToken && parsedUser) {
+        setAccessToken(storedToken);
         await loadConversations();
       }
 
@@ -222,6 +201,7 @@ function App() {
       }
 
       setAccessToken(data.accessToken);
+      localStorage.setItem("accessToken", data.accessToken);
 
       const user = { username };
       setAuthUser(user);
@@ -249,6 +229,7 @@ function App() {
       console.error("Logout error:", error);
     } finally {
       setAccessToken(null);
+      localStorage.removeItem("accessToken");
       setAuthUser(null);
       setCurrentUserId(null);
       setConversations({});

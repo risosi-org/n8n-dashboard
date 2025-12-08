@@ -1,6 +1,14 @@
 import { useMemo } from 'react'
 
-function Sidebar({ conversations, currentUserId, searchQuery, onSearchChange, onSelectConversation }) {
+function Sidebar({
+  conversations,
+  currentUserId,
+  searchQuery,
+  onSearchChange,
+  onSelectConversation,
+  onLogout,
+  authUser,
+}) {
   // Calculate stats
   const stats = useMemo(() => {
     const total = Object.keys(conversations).length
@@ -103,6 +111,23 @@ function Sidebar({ conversations, currentUserId, searchQuery, onSearchChange, on
             </div>
           ))
         )}
+      </div>
+
+      <div className="p-4 border-t border-border">
+        <div className="bg-dark-3 border border-border rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-text-muted">Signed in as</div>
+            <div className="text-sm font-semibold text-text">
+              {authUser?.username || "User"}
+            </div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-semibold border border-red-500/30 hover:bg-red-500/30 transition-all"
+          >
+            Logout
+          </button>
+        </div>
       </div>
     </aside>
   )

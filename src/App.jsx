@@ -4,21 +4,84 @@ import Sidebar from "./components/Sidebar";
 import ChatContainer from "./components/ChatContainer";
 import EmptyState from "./components/EmptyState";
 import LoadingOverlay from "./components/LoadingOverlay";
+import Login from "./components/Login";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
-
+const RAW_API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+const API_BASE = RAW_API_URL.replace(/\/api\/?$/, "");
+const API_URL = `${API_BASE}/api`;
 
 function App() {
   const [conversations, setConversations] = useState({});
   const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [accessToken, setAccessToken] = useState(null);
+  const [authUser, setAuthUser] = useState(() => {
+    const savedUser = localStorage.getItem("authUser");
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
 
+  const refreshToken = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      setAccessToken(data.accessToken);
+      return data.accessToken;
+    } catch (error) {
+      console.error("Error refreshing token:", error);
+      return null;
+    }
+  };
+
+  const fetchWithAuth = async (
+    url,
+    options = {},
+    allowRetry = true,
+    tokenOverride = null
+  ) => {
+    const activeToken = tokenOverride || accessToken;
+    const headers = {
+      ...(options.headers || {}),
+      ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+    };
+
+    const response = await fetch(url, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+
+    if (response.status === 401 && allowRetry) {
+      const refreshedToken = await refreshToken();
+      if (refreshedToken) {
+        return fetchWithAuth(url, options, false, refreshedToken);
+      }
+
+      setAuthUser(null);
+      setAccessToken(null);
+      localStorage.removeItem("authUser");
+      throw new Error("Unauthorized");
+    }
+
+    return response;
+  };
 
   // Load conversations
-  const loadConversations = async () => {
+  const loadConversations = async (showSpinner = false) => {
+    if (showSpinner) {
+      setLoading(true);
+    }
+
     try {
-      const response = await fetch(`${API_URL}/conversations`);
+      const response = await fetchWithAuth(`${API_URL}/conversations`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch conversations");
@@ -28,20 +91,48 @@ function App() {
       setConversations(data);
     } catch (error) {
       console.error("Error loading conversations:", error);
-      toast.error(
-        "Failed to load conversations. Make sure backend is running."
-      );
+
     } finally {
-      setLoading(false);
+      if (showSpinner) {
+        setLoading(false);
+      }
     }
   };
 
-  // Auto-refresh every 5 seconds
+  // Bootstrap session from refresh token if available
   useEffect(() => {
-    loadConversations();
-    const interval = setInterval(loadConversations, 5000);
-    return () => clearInterval(interval);
+    const bootstrapAuth = async () => {
+      setLoading(true);
+      const hasSession = await refreshToken();
+
+      if (hasSession && !authUser) {
+        const savedUser = localStorage.getItem("authUser");
+        const parsedUser = savedUser ? JSON.parse(savedUser) : null;
+        setAuthUser(parsedUser || { username: "User" });
+      }
+
+      if (hasSession || authUser) {
+        await loadConversations();
+      }
+
+      setLoading(false);
+    };
+
+    bootstrapAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-refresh every 5 seconds once authenticated
+  useEffect(() => {
+    if (!authUser) {
+      return;
+    }
+
+    loadConversations();
+    const interval = setInterval(() => loadConversations(), 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser]);
 
   // Select conversation
   const handleSelectConversation = (userId) => {
@@ -52,7 +143,7 @@ function App() {
   const handleToggleAI = async (userId) => {
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await fetchWithAuth(
         `${API_URL}/conversations/${userId}/toggle`,
         {
           method: "POST",
@@ -86,9 +177,12 @@ function App() {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/conversations/${userId}`, {
-        method: "DELETE",
-      });
+      const response = await fetchWithAuth(
+        `${API_URL}/conversations/${userId}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to delete conversation");
@@ -111,12 +205,73 @@ function App() {
     }
   };
 
+  const handleLogin = async ({ username, password }) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+
+      setAccessToken(data.accessToken);
+
+      const user = { username };
+      setAuthUser(user);
+      localStorage.setItem("authUser", JSON.stringify(user));
+      toast.success("Logged in successfully");
+
+      await loadConversations(true);
+    } catch (error) {
+      console.error("Login error:", error);
+      toast.error(error.message || "Login failed");
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      setLoading(true);
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setAccessToken(null);
+      setAuthUser(null);
+      setCurrentUserId(null);
+      setConversations({});
+      localStorage.removeItem("authUser");
+      setLoading(false);
+    }
+  };
+
   const currentConversation = currentUserId
     ? conversations[currentUserId]
     : null;
 
+  if (!authUser) {
+    return (
+      <div className="min-h-screen">
+        <Toaster position="top-right" />
+        <Login onLogin={handleLogin} />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden relative">
       <Toaster position="top-right" />
       <LoadingOverlay loading={loading} />
 
@@ -126,6 +281,8 @@ function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onSelectConversation={handleSelectConversation}
+        onLogout={handleLogout}
+        authUser={authUser}
       />
 
       <main className="flex-1 flex flex-col bg-dark">

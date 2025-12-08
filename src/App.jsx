@@ -41,7 +41,6 @@ function App() {
       headers,
     });
 
-    console.log({response})
 
     if (response.status === 401) {
  
@@ -68,7 +67,6 @@ function App() {
       setConversations(data);
     } catch (error) {
       console.error("Error loading conversations:", error);
-      toast.error("Failed to load conversations. Please login again.");
     } finally {
       if (showSpinner) {
         setLoading(false);

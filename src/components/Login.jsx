@@ -2,8 +2,8 @@ import { useState } from "react";
 import { toast } from "react-hot-toast";
 
 function Login({ onLogin }) {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("password");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event) => {

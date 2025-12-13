@@ -23,6 +23,15 @@ function App() {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
+  const clearAuth = () => {
+    setAccessToken(null);
+    localStorage.removeItem("accessToken");
+    setAuthUser(null);
+    setCurrentUserId(null);
+    setConversations({});
+    localStorage.removeItem("authUser");
+  };
+
   const fetchWithAuth = async (
     url,
     options = {},
@@ -30,9 +39,14 @@ function App() {
     tokenOverride = null
   ) => {
     const activeToken = tokenOverride || accessToken;
+    
+    if (!activeToken) {
+      throw new Error("No access token available");
+    }
+
     const headers = {
       ...(options.headers || {}),
-      ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+      Authorization: `Bearer ${activeToken}`,
     };
 
     const response = await fetch(url, {
@@ -41,9 +55,9 @@ function App() {
       headers,
     });
 
-
     if (response.status === 401) {
- 
+      clearAuth();
+      toast.error("Session expired. Please login again.");
       throw new Error("Unauthorized");
     }
 
